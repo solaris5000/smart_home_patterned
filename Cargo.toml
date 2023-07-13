@@ -1,5 +1,0 @@
-[workspace]
-members = [
-    "home_server",
-    "smart_home"
-]
