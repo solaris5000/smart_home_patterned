@@ -6,4 +6,10 @@ use thiserror::Error;
 pub enum HomeError {
     #[error("There are same udp and tcp port")]
     SamePorts,
+    #[error("There are already room with the same name")]
+    DuplicatingRoom,
+    #[error("Some device error in home")]
+    InnerDeviceError,
+    #[error("Some room error in home")]
+    InnerRoomError,
 }

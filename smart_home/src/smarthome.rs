@@ -26,11 +26,14 @@ pub struct Room {
     device : Vec<Device>,
 }
 
+pub struct Report(String);
+
+
 
 impl HomeBuilder {
 
     pub fn new() -> HomeBuilder {
-        HomeBuilder { tcp_port : 50001 , udp_port : 50002, ..Default::default() }
+        HomeBuilder {addr : "127.0.0.1".to_string(), tcp_port : 50001 , udp_port : 50002, ..Default::default() }
     }
 
     pub fn name(mut self, name : String ) -> HomeBuilder {
@@ -82,8 +85,79 @@ impl HomeBuilder {
     }
 }
 
+impl Home {
+    pub fn add_room(&mut self, room : Room) -> Result<(), HomeError> {
+
+        for inner_room in &self.rooms {
+            if inner_room.name == room.name {
+                return Err(HomeError::DuplicatingRoom);
+            }
+        }
+        Ok(self.rooms.push(room)) 
+    }
+
+    pub fn create_room(&mut self, room_name : &str) -> Result<(), HomeError> {
+        for inner_room in &self.rooms {
+            if inner_room.name == room_name {
+                return Err(HomeError::DuplicatingRoom);
+            }
+        }
+        Ok(self.rooms.push(Room::new(room_name))) 
+    }
+
+    pub fn home_report(&self) -> Result<String, HomeError> {
+
+        let mut report = "Home report:".to_string();
+
+        let level = "\n\t";
+
+        for room in &self.rooms {
+            report = report + level + &room.room_report().unwrap();
+        }
+
+        Ok(report)
+    }
+
+    pub fn show_config(&self) {
+        println!("IP address: {}", self.addr);
+        println!("TCP port: {}", self.tcp_port);
+        println!("UDP port: {}", self.udp_port);
+    }
+}
+
 impl  Room {
     pub fn new(name : &str) -> Room {
         Room { name: name.to_string() , ..Default::default()}
+    }
+
+    pub fn room_report(&self) -> Result<String, HomeError> {
+        let mut report = "Room name: ".to_string() + &self.name;
+        let level = "\n\t\t";
+        if self.device.len() == 0 {
+            report = report + level + "There is no devices in this room";
+        } else {
+            report = report + level + "Device report";
+        }
+        Ok(report)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::smarthome::HomeBuilder;
+
+    #[test]
+    fn it_works() {
+        let mut a = HomeBuilder::new().build().unwrap();
+        a.create_room("Test1").unwrap();
+        a.create_room("Test Room 2").unwrap();
+        println!("{}", a.home_report().unwrap());
+    }
+
+    #[test]
+    fn ips() {
+        let a = HomeBuilder::new().build().unwrap();
+        a.show_config();
     }
 }
