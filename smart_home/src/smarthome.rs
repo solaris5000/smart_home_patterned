@@ -1,6 +1,8 @@
+use std::ops::Index;
+
 /// модуль описывает взаимодействие дома с комнатами, с сервером
 
-use crate::{device::Device, errors::HomeError};
+use crate::{device::Device, errors::{HomeError, RoomError}};
 
 #[derive(Debug)]
 pub struct Home {
@@ -69,7 +71,7 @@ impl HomeBuilder {
         let room_names : Vec<&str> = rooms_string.split(',').collect();
 
         for room_name in room_names {
-            self.rooms.push(Room::new(room_name.trim()));
+            self.rooms.push(Room::new(room_name.trim()).unwrap());
         }
 
         self
@@ -86,25 +88,62 @@ impl HomeBuilder {
 }
 
 impl Home {
+
+    // добавление комнаты
     pub fn add_room(&mut self, room : Room) -> Result<(), HomeError> {
 
         for inner_room in &self.rooms {
             if inner_room.name == room.name {
-                return Err(HomeError::DuplicatingRoom);
+                return Err(HomeError::DuplicatingRoom(room.name.to_string()));
             }
         }
         Ok(self.rooms.push(room)) 
     }
 
+    /// Создание комнаты по указанному имени.
     pub fn create_room(&mut self, room_name : &str) -> Result<(), HomeError> {
+        
         for inner_room in &self.rooms {
             if inner_room.name == room_name {
-                return Err(HomeError::DuplicatingRoom);
+                return Err(HomeError::DuplicatingRoom(room_name.to_string()));
             }
         }
-        Ok(self.rooms.push(Room::new(room_name))) 
+        Ok(self.rooms.push(Room::new(room_name).unwrap())) 
+    }
+    
+    ///Удаление комнаты из дома. Если комната не существует или в процессе удаления возникла ошибка, возвращает ошибку.
+    pub fn remove_room(&mut self, room_name : &str) -> Result<(), HomeError> {
+        //let mut operating_room = &mut Room::placeholder();
+        let mut index = 0usize;
+        for inner_room in &mut self.rooms {
+            if inner_room.name == room_name {
+                match inner_room.clear_devices() {
+                    Ok(_) => {
+                        self.rooms.remove(index);
+                        return Ok(());
+                    },
+                    Err(e) => {
+                        println!("{:?}", &e); 
+                        match e {
+                            RoomError::NoDevices => {
+                                self.rooms.remove(index);
+                                return Ok(());
+                            },
+                            _ => {
+                                return Err(e.into());
+                            }
+                        }     
+                    }
+                }
+            }
+
+            index += 1;
+        }
+
+        Err(HomeError::RoomNotExist(room_name.to_string()))
     }
 
+    ///Создание отчёта по всем комнатам в доме.
     pub fn home_report(&self) -> Result<String, HomeError> {
 
         let mut report = "Home report:".to_string();
@@ -118,6 +157,7 @@ impl Home {
         Ok(report)
     }
 
+    ///Отображение сетевой информации о доме.
     pub fn show_config(&self) {
         println!("IP address: {}", self.addr);
         println!("TCP port: {}", self.tcp_port);
@@ -126,10 +166,19 @@ impl Home {
 }
 
 impl  Room {
-    pub fn new(name : &str) -> Room {
-        Room { name: name.to_string() , ..Default::default()}
+    pub fn new(name : &str) -> Result<Room, RoomError> {
+        if name.trim() == "" {
+            return Err(RoomError::MinNameLength);
+        }
+        Ok(Room { name: name.to_string() , ..Default::default()})
     }
 
+    ///Затычка, используемая в качестве нулевой комнаты с невозможным пустым именем.
+    fn placeholder() -> Room {
+        Room {name : "".to_string(), ..Default::default()}
+    }
+
+    ///Создание отчёта комнаты.
     pub fn room_report(&self) -> Result<String, HomeError> {
         let mut report = "Room name: ".to_string() + &self.name;
         let level = "\n\t\t";
@@ -139,6 +188,17 @@ impl  Room {
             report = report + level + "Device report";
         }
         Ok(report)
+    }
+
+    /// Удаление всей информации об устройствах в комнате. Очистка вектора устройств. 
+    /// В случае если комната пуста, возвращает ошибку.
+    fn clear_devices(&mut self) -> Result<(), RoomError> {
+        if self.device.len() == 0 {
+            return Err(RoomError::NoDevices);
+        }
+
+        self.device.clear();
+        Ok(())
     }
 }
 

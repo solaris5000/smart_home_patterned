@@ -5,6 +5,7 @@ use tokio::net::TcpStream;
 
 #[derive(Debug, Default)]
 pub struct Device {
+    name : String,
     ip : String,
     device_type : DeviceType
 }

@@ -14,7 +14,7 @@ async fn main() {
     .unwrap();
 
 
-    let rooms = vec![Room::new("TestRoom1")];
+    let rooms = vec![Room::new("TestRoom1").unwrap()];
 
     let test_home_with_roomsvec = HomeBuilder::new()
     .name("test".to_string())
