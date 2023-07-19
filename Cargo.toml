@@ -2,5 +2,7 @@
 
 members = [
     "home_server",
-    "smart_home"
+    "smart_home",
+    "async_socket",
+    "async_therm"
 ]

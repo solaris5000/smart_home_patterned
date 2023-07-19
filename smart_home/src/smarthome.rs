@@ -2,7 +2,7 @@ use std::ops::Index;
 
 /// модуль описывает взаимодействие дома с комнатами, с сервером
 
-use crate::{device::Device, errors::{HomeError, RoomError}};
+use crate::{device::{Device, DeviceType}, errors::{HomeError, RoomError}};
 
 #[derive(Debug)]
 pub struct Home {
@@ -199,6 +199,15 @@ impl  Room {
 
         self.device.clear();
         Ok(())
+    }
+
+    pub fn add_device(&mut self, device : Device) {
+        self.device.push(device)
+    }
+
+    pub fn create_device(&mut self, name : String, ip : String, device_type : DeviceType)
+    {
+        self.device.push(Device::new(name, ip, device_type))
     }
 }
 
