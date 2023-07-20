@@ -1,30 +1,40 @@
 // модуль описывает взаимодействие с девайсами
 
-use tokio::net::TcpStream;
+use std::{error::Error, time::Duration};
 
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpStream, UdpSocket},
+    time::timeout,
+};
+
+use crate::errors::ConnectionError;
 
 #[derive(Debug, Default)]
 pub struct Device {
-    name : String,
-    ip : String,
-    device_type : DeviceType
+    name: String,
+    ip: String,
+    device_type: DeviceType,
 }
-
 
 #[derive(Debug)]
 pub enum DeviceType {
     SmartSocket,
-    SmartThermometer    
+    SmartThermometer,
 }
 
 pub struct DeviceHandshakeResult {
-    status : bool,
-    tcp_stream : Option<TcpStream>
+    status: bool,
+    tcp_stream: Option<TcpStream>,
 }
 
 impl Device {
-    pub fn new(name : String, ip : String, device_type : DeviceType) -> Device {
-        Device { name: name, ip: ip, device_type: device_type }
+    pub fn new(name: String, ip: String, device_type: DeviceType) -> Device {
+        Device {
+            name: name,
+            ip: ip,
+            device_type: device_type,
+        }
     }
 }
 
@@ -34,24 +44,117 @@ impl Default for DeviceType {
     }
 }
 
-
-
-
-pub async fn handshake(device : &Device) -> DeviceHandshakeResult {
+/// Функция для установления соединения с устройствами.
+/// В случае TCP устройства - происходит обмен сообщениями, с целью установления корректности адресата.
+/// В случае UDP устройства - происходит получение датаграмм на указанный сокет, их расшифровка и в случае корректного паттерна
+/// возвращаем успех в установлении соединения.
+pub async fn handshake(
+    incoming_udp_socket: Option<&UdpSocket>,
+    device: &Device,
+) -> DeviceHandshakeResult {
     match device.device_type {
-        DeviceType::SmartSocket => { tcp_handshake(device).await },
-        DeviceType::SmartThermometer => { udp_try_recive(device).await },
+        DeviceType::SmartSocket => tcp_handshake(device).await,
+        DeviceType::SmartThermometer => udp_try_recive(incoming_udp_socket.unwrap(), device).await,
     }
 }
 
-async fn tcp_handshake(device : &Device) -> DeviceHandshakeResult {
-    // отправляем в розетку handshake, ждём результат, в случае если удаётся, отдаём TCPListener
+//НЕОБХОДИМА РЕАЛИЗАЦИЯ ХЕНДШЕЙКА ДЛЯ УСТРОЙСТВА
+async fn tcp_handshake(device: &Device) -> Result<DeviceHandshakeResult, ConnectionError> {
+    let mut stream = TcpStream::connect(device.ip).await;
 
-    DeviceHandshakeResult{status : false, tcp_stream : None }
+    if stream.is_err() {
+        println!(
+            "[ERROR] some error happend due handshake to '{}'; Error: {}",
+            device.ip,
+            stream.unwrap_err()
+        );
+        DeviceHandshakeResult {
+            status: false,
+            tcp_stream: None,
+        };
+    } else {
+        let stream = stream.unwrap();
+        let buf: &[u8; 4] = "HDSH".as_bytes();
+
+        match timeout(Duration::from_secs(3), stream.write_all(buf)).await {
+            Ok(_) => {}
+            Err(_) => {
+                return Err(ConnectionError::ConnectionTimeout(device.ip));
+            }
+        }
+
+        buf.clear();
+
+        match timeout(Duration::from_secs(3), stream.read_exact(buf)).await {
+            Ok(_) => match buf {
+                "HSDS" => Ok(DeviceHandshakeResult {
+                    status: true,
+                    tcp_stream: Some(stream),
+                }),
+                _ => Err(ConnectionError::BadHandshakeResult(device.ip)),
+            },
+            Err(_) => Err(ConnectionError::ConnectionTimeout(device.ip)),
+        }
+    }
 }
 
-async fn udp_try_recive(device : &Device) -> DeviceHandshakeResult {
-        // попытаться получить от термометра данные в нужном формате, если данные получены правильно, 
-        // то продолжаем работать с этой розеткой, иначе отменяем работу сней
-        DeviceHandshakeResult{status : false, tcp_stream : None }
+// НЕ РЕАЛИЗОВАННО НА СТОРОНЕ ТЕРМОМЕТРА
+// сделать протокол : старший байт - буква T, младшие 3 байта - температура
+
+// нужно протестировать
+async fn udp_try_recive(
+    incoming_socket: &UdpSocket,
+    device: &Device,
+) -> Result<DeviceHandshakeResult, ConnectionError> {
+    let mut buf: [u8; 4] = [0, 0, 0, 0];
+    match timeout(Duration::from_secs(15), incoming_socket.recv_buf(&mut buf)).await {
+        Ok(datagram_size) => match datagram_size {
+            Ok(size) => {
+                if size == 4_usize {
+                    if buf[0] == 'T' {
+                        buf[0] == 0_u8;
+
+                        let temp = f32::from_le_bytes(&buf);
+                        dbg!(temp);
+
+                        Ok(DeviceHandshakeResult {
+                            status: true,
+                            tcp_stream: None,
+                        })
+                    }
+                }
+
+                Err(ConnectionError::BadHandshakeResult(device.ip))
+            }
+            Err(e) => {
+                println!("[ERROR] Some I/O ERROR {:?}", e);
+                Err(ConnectionError::BadHandshakeResult(device.ip))
+            }
+        },
+        Err(_) => Err(ConnectionError::ConnectionTimeout(device.ip)),
+    }
+    // попытаться получить от термометра данные в нужном формате, если данные получены правильно,
+    // то продолжаем работать с этой розеткой, иначе отменяем работу сней
+    DeviceHandshakeResult {
+        status: false,
+        tcp_stream: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::smarthome::HomeBuilder;
+
+    #[test]
+    fn it_works() {
+        let stream = tokio::net::TcpStream::connect("123.123.123.123:56566").await;
+        if let a = std::io::Error == stream {
+            println!("Succsess");
+        }
+    }
+
+    #[test]
+    fn tst() {
+        1.5.to_be_bytes();
+    }
 }

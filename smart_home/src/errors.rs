@@ -1,5 +1,7 @@
 // модуль описывающий ошибки
 
+use std::io::Error;
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -16,11 +18,18 @@ pub enum HomeError {
     InnerRoomError(#[from] RoomError),
 }
 
-
 #[derive(Error, Debug)]
 pub enum RoomError {
     #[error("Minimal name length requires 1 symbol")]
     MinNameLength,
     #[error("The room has no devices")]
     NoDevices,
+}
+
+#[derive(Error, Debug)]
+pub enum ConnectionError {
+    #[error("[ERROR] Connection timeout to {0}")]
+    ConnectionTimeout(String),
+    #[error("[ERROR] Bad handshake result to {0}")]
+    BadHandshakeResult(String),
 }
