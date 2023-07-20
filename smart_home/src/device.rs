@@ -12,7 +12,7 @@ pub struct Device {
 
 
 #[derive(Debug)]
-enum DeviceType {
+pub enum DeviceType {
     SmartSocket,
     SmartThermometer    
 }
@@ -20,6 +20,12 @@ enum DeviceType {
 pub struct DeviceHandshakeResult {
     status : bool,
     tcp_stream : Option<TcpStream>
+}
+
+impl Device {
+    pub fn new(name : String, ip : String, device_type : DeviceType) -> Device {
+        Device { name: name, ip: ip, device_type: device_type }
+    }
 }
 
 impl Default for DeviceType {
