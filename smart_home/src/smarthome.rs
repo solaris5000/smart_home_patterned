@@ -64,9 +64,18 @@ impl HomeBuilder {
     }
     
 
-    
+    /// Позволяет при создании дома создать пустые комнаты по названию, указанными через запятую.
+    /// # Examples
+    /// ```
+    /// let a = HomeBuilder::new()
+    /// .name("test".to_string())
+    /// .addr("127.0.0.1".to_string())
+    /// .names_of_rooms("Room1, Room2,Room3".to_string())
+    /// .build()
+    /// .unwrap();
+    /// ```
     pub fn names_of_rooms(mut self, rooms_string : String ) -> HomeBuilder {
-        // Принимает в качестве комнат список комнат через запятую
+        
 
         let room_names : Vec<&str> = rooms_string.split(',').collect();
 
