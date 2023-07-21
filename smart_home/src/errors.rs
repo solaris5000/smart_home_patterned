@@ -32,4 +32,6 @@ pub enum ConnectionError {
     ConnectionTimeout(String),
     #[error("[ERROR] Bad handshake result to {0}")]
     BadHandshakeResult(String),
+    #[error("[ERROR] This device does not support this type of TP: {0}")]
+    WrongDevice(String),
 }
