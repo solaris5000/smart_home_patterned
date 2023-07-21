@@ -20,8 +20,8 @@ pub struct Device {
 
 #[derive(Debug, Default)]
 pub enum InnerDevice {
-    SmartSocket(bool, f32, f32),
-    SmartThermometer(f32),
+    SmartSocket,
+    SmartThermometer(Option<f32>),
 }
 
 pub struct DeviceHandshakeResult {
@@ -110,11 +110,20 @@ async fn listen_udp(incoming_socket: &UdpSocket, home: Arc<RwLock<Home>>) -> std
         if size == 4_usize {
             if buf[0] == 'T' {
                 buf[0] == 0_u8;
-
-                homearc.read().await();
-
                 let temp = f32::from_le_bytes(&buf);
                 dbg!(temp);
+                {
+                   let guard = home.write();
+                   
+                   for room in guard.rooms {
+                        for device in room.device {
+                            if device.ip == addr.to_string() {
+                                device.0 = Some(temp);
+                                println!("[INFO] Updated data about {}", device.ip);
+                            }
+                        }
+                   }
+                }
             }
         }
     }
