@@ -59,9 +59,6 @@ pub async fn handshake(
 //НЕОБХОДИМА РЕАЛИЗАЦИЯ ХЕНДШЕЙКА ДЛЯ УСТРОЙСТВА
 async fn tcp_handshake(device: &Device) -> DeviceHandshakeResult {
     match device.device {
-    _ => {
-        return DeviceHandshakeResult {result : Err(ConnectionError::WrongDevice("TCP".to_string()))}
-    },
     InnerDevice::SmartSocket => {
     let stream = TcpStream::connect(device.ip.to_string()).await;
 
@@ -98,6 +95,9 @@ async fn tcp_handshake(device: &Device) -> DeviceHandshakeResult {
         }
     }
     }
+    _ => {
+        return DeviceHandshakeResult {result : Err(ConnectionError::WrongDevice("TCP".to_string()))}
+    },
 }
 }
 
