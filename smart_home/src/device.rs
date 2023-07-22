@@ -1,24 +1,25 @@
 // модуль описывает взаимодействие с девайсами
 
-use std::{error::Error, time::Duration};
+use std::sync::Arc;
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpStream, UdpSocket},
     sync::RwLock,
     time::timeout,
+    time::Duration
 };
 
-use crate::errors::ConnectionError;
+use crate::{errors::ConnectionError, smarthome::Home};
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Device {
     name: String,
     ip: String,
-    device: InnerDevice,
+    pub device: InnerDevice,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub enum InnerDevice {
     SmartSocket,
     SmartThermometer(Option<f32>),
@@ -38,32 +39,31 @@ impl Device {
     }
 }
 
-impl Default for DeviceType {
-    fn default() -> Self {
-        DeviceType::SmartSocket
-    }
-}
-
 /// Функция для установления соединения с устройствами.
 /// В случае TCP устройства - происходит обмен сообщениями, с целью установления корректности адресата.
 /// В случае UDP устройства - происходит получение датаграмм на указанный сокет, их расшифровка и в случае корректного паттерна
 /// возвращаем успех в установлении соединения.
+/// 
+/*
 pub async fn handshake(
     incoming_udp_socket: Option<&UdpSocket>,
     device: &Device,
 ) -> DeviceHandshakeResult {
-    match device.device_type {
-        DeviceType::SmartSocket => tcp_handshake(device).await,
-        DeviceType::SmartThermometer => udp_try_recive(incoming_udp_socket.unwrap(), device).await,
+    match device.device {
+        InnerDevice::SmartSocket => tcp_handshake(device).await,
+        InnerDevice::SmartThermometer(t) => udp_try_recive(incoming_udp_socket.unwrap(), device).await,
     }
 }
+*/
 
 //НЕОБХОДИМА РЕАЛИЗАЦИЯ ХЕНДШЕЙКА ДЛЯ УСТРОЙСТВА
 async fn tcp_handshake(device: &Device) -> DeviceHandshakeResult {
-    if device != InnerDevice::SmartSocket {
-        return ConnectionError::WrongDevice("TCP".to_string());
-    }
-    let mut stream = TcpStream::connect(device.ip).await;
+    match device.device {
+    _ => {
+        return DeviceHandshakeResult {result : Err(ConnectionError::WrongDevice("TCP".to_string()))}
+    },
+    InnerDevice::SmartSocket => {
+    let stream = TcpStream::connect(device.ip.to_string()).await;
 
     if stream.is_err() {
         println!(
@@ -71,28 +71,34 @@ async fn tcp_handshake(device: &Device) -> DeviceHandshakeResult {
             device.ip,
             stream.unwrap_err()
         );
-        Err(ConnectionError::BadHandshakeResult(device.ip));
+        DeviceHandshakeResult {result : Err(ConnectionError::BadHandshakeResult(device.ip.to_string()))}
     } else {
-        let stream = stream.unwrap();
-        let buf: &[u8; 4] = "HDSH".as_bytes();
+        let mut stream = stream.unwrap();
+        let mut buf = *b"HSDS";
 
-        match timeout(Duration::from_secs(3), stream.write_all(buf)).await {
+        match timeout(Duration::from_secs(3), stream.write_all(&buf)).await {
             Ok(_) => {}
             Err(_) => {
-                return Err(ConnectionError::ConnectionTimeout(device.ip));
+                return DeviceHandshakeResult { result : Err(ConnectionError::ConnectionTimeout(device.ip.to_string()))};
             }
         }
 
-        buf.clear();
+        buf = [0; 4];
+        let timeout = timeout(
+        Duration::from_secs(3),
+        stream.read_exact(&mut buf)).await;
 
-        match timeout(Duration::from_secs(3), stream.read_exact(buf)).await {
-            Ok(_) => match buf {
-                "HSDS" => Ok(stream),
-                _ => Err(ConnectionError::BadHandshakeResult(device.ip)),
+        match timeout
+        {
+            Ok(_) => match &buf {
+                b"HSDS" => DeviceHandshakeResult { result : Ok(stream)},
+                _ => DeviceHandshakeResult { result : Err(ConnectionError::BadHandshakeResult(device.ip.to_string()))},
             },
-            Err(_) => Err(ConnectionError::ConnectionTimeout(device.ip)),
+            Err(_) => DeviceHandshakeResult { result : Err(ConnectionError::ConnectionTimeout(device.ip.to_string()))},
         }
     }
+    }
+}
 }
 
 // НЕ РЕАЛИЗОВАННО НА СТОРОНЕ ТЕРМОМЕТРА
@@ -100,25 +106,28 @@ async fn tcp_handshake(device: &Device) -> DeviceHandshakeResult {
 
 // нужно дописать реализацию с Arc<Rwlock домом, чтобы при приходе датаграммы, проверялись комнаты и находился нужный термометр, данные о котором будут апдейтиться
 async fn listen_udp(incoming_socket: &UdpSocket, home: Arc<RwLock<Home>>) -> std::io::Result<()> {
-    let mut buf: [u8; 4] = [0, 0, 0, 0];
+    let mut buf = Vec::with_capacity(4);
+    let mut temp_buf = [0u8; 4];
     loop {
         let homearc = home.clone();
-        buf = [0, 0, 0, 0];
+        buf.clear();
 
         let (len, addr) = incoming_socket.recv_buf_from(&mut buf).await?;
 
-        if size == 4_usize {
-            if buf[0] == 'T' {
-                buf[0] == 0_u8;
-                let temp = f32::from_le_bytes(&buf);
+        if len == 4_usize {
+            if buf[0] == b'T' {
+                temp_buf[1] = buf[1];
+                temp_buf[2] = buf[2];
+                temp_buf[3] = buf[3];
+                let temp = f32::from_le_bytes(temp_buf);
                 dbg!(temp);
                 {
-                   let guard = home.write();
+                   let guard = homearc.write();
                    
-                   for room in guard.rooms {
-                        for device in room.device {
+                   for room in &mut guard.await.rooms {
+                        for mut device in &mut room.device {
                             if device.ip == addr.to_string() {
-                                device.0 = Some(temp);
+                                device.device = InnerDevice::SmartThermometer(Some(temp));
                                 println!("[INFO] Updated data about {}", device.ip);
                             }
                         }
@@ -131,18 +140,13 @@ async fn listen_udp(incoming_socket: &UdpSocket, home: Arc<RwLock<Home>>) -> std
 
 #[cfg(test)]
 mod tests {
-    use crate::smarthome::HomeBuilder;
-
+   // use crate::smarthome::HomeBuilder;
+/* 
     #[test]
     fn it_works() {
         let stream = tokio::net::TcpStream::connect("123.123.123.123:56566").await;
         if let a = std::io::Error == stream {
             println!("Succsess");
         }
-    }
-
-    #[test]
-    fn tst() {
-        1.5.to_be_bytes();
-    }
+    }*/
 }
