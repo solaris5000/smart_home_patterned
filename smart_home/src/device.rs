@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
-    net::{TcpStream, UdpSocket},
+    net::{TcpStream, UdpSocket, ToSocketAddrs},
     sync::RwLock,
     time::timeout,
     time::Duration
@@ -88,7 +88,7 @@ async fn tcp_handshake(device: &Device) -> DeviceHandshakeResult {
         match timeout
         {
             Ok(_) => match &buf {
-                b"HSDS" => DeviceHandshakeResult { result : Ok(stream)},
+                b"SDSH" => DeviceHandshakeResult { result : Ok(stream)},
                 _ => DeviceHandshakeResult { result : Err(ConnectionError::BadHandshakeResult(device.ip.to_string()))},
             },
             Err(_) => DeviceHandshakeResult { result : Err(ConnectionError::ConnectionTimeout(device.ip.to_string()))},
@@ -104,8 +104,10 @@ async fn tcp_handshake(device: &Device) -> DeviceHandshakeResult {
 // НЕ РЕАЛИЗОВАННО НА СТОРОНЕ ТЕРМОМЕТРА
 // сделать протокол : старший байт - буква T, младшие 3 байта - температура
 
-// нужно дописать реализацию с Arc<Rwlock домом, чтобы при приходе датаграммы, проверялись комнаты и находился нужный термометр, данные о котором будут апдейтиться
-async fn listen_udp(incoming_socket: &UdpSocket, home: Arc<RwLock<Home>>) -> std::io::Result<()> {
+/// Слушаем приходящие на UDP Socket датаграммы, ищем термометр с идентичным IP и обновляем информацию о нём, если нашли.
+pub async fn listen_udp<T>(incoming_socket: &T, home: Arc<RwLock<Home>>) -> std::io::Result<()> 
+where T : ToSocketAddrs
+{
     let mut buf = Vec::with_capacity(4);
     let mut temp_buf = [0u8; 4];
     loop {
@@ -126,7 +128,9 @@ async fn listen_udp(incoming_socket: &UdpSocket, home: Arc<RwLock<Home>>) -> std
                    
                    for room in &mut guard.await.rooms {
                         for mut device in &mut room.device {
-                            if device.ip == addr.to_string() {
+                            let mut temp = device.ip;
+                            temp = temp.split(':')[0].to_string(); //разбиваем входящий адрес клиента на ip, port, для дальнейшего сравнения ip адресов
+                            if temp == addr.to_string() {
                                 device.device = InnerDevice::SmartThermometer(Some(temp));
                                 println!("[INFO] Updated data about {}", device.ip);
                             }

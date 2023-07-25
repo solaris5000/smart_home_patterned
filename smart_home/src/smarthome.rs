@@ -1,8 +1,10 @@
-use std::ops::Index;
+use std::{ops::Index, sync::Arc};
+
+use tokio::sync::RwLock;
 
 /// модуль описывает взаимодействие дома с комнатами, с сервером
 use crate::{
-    device::{Device, InnerDevice},
+    device::{Device, InnerDevice, listen_udp},
     errors::{HomeError, RoomError},
 };
 
@@ -172,6 +174,15 @@ impl Home {
         println!("IP address: {}", self.addr);
         println!("TCP port: {}", self.tcp_port);
         println!("UDP port: {}", self.udp_port);
+    }
+
+
+    ///Запуск порта для получения информации о термометрах и обновлении информации о них, в случае если они заведены в доме и находятся в какой-то из комнат
+    fn start_listener(home : Arc<RwLock<Home>>) {
+        let homeread = home.read().await;
+        let socket = homeread.addr + ":" + homeread.udp_port;
+
+        listen_udp(&socket, home).await?;
     }
 }
 
