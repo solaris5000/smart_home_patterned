@@ -1,6 +1,8 @@
 use std::{io::*, net::TcpStream};
 
 pub fn read_responce<Reader: Read>(mut reader: Reader) -> String {
+    // сделать так, что общение происходит посредством 16 байтовых пакетов?
+
     let mut buf = [0; 4];
     let responce: (bool, String) = match reader.read_exact(&mut buf) {
         Ok(_) => {

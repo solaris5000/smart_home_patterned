@@ -1,5 +1,29 @@
-async fn scan_command(guard: Arc<RwLock<Socket>>, stream: &mut TcpStream) -> ConnectionState {
-    let socket = guard.as_ref();
+//переписать функцию под работу с домом, получать комманды от клиента и работать с домом, после отправлять клиенту ответы
+
+// функиця для поддержания коннекта с клиентом, тоже переписать надо её
+
+pub enum ConnectionState {
+    CsConnected,
+    CsDisconnected,
+}
+
+pub async fn process_connection(connection: TcpStream, guard: Arc<RwLock<Home>>) {
+    let mut stream = connection;
+    loop {
+        let loopguard = guard.clone();
+        match Self::scan_command(loopguard, &mut stream).await {
+            ConnectionState::CsConnected => {}
+            ConnectionState::CsDisconnected => {
+                break;
+            }
+        }
+    }
+}
+
+async fn scan_command(guard: Arc<RwLock<Home>>, stream: &mut TcpStream) -> ConnectionState {
+
+    // сделать так, что общение происходит посредством 16 байтовых пакетов?
+    let home = guard.as_ref();
 
     let buf = sdtp::read_command(stream).await;
     match buf {
